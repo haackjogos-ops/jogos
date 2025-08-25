@@ -30,6 +30,7 @@ interface ActiveFila {
   concluiu_em: string | null;
   status: 'pendente' | 'ativo' | 'finalizado';
   remaining_seconds: number | null;
+  was_advanced?: boolean;
 }
 
 interface FilaUser {
@@ -50,21 +51,38 @@ const VolleyballQueue = () => {
   const [firstSkillLevel, setFirstSkillLevel] = useState<'iniciante' | 'intermediario' | 'avancado'>('iniciante');
   const [secondSkillLevel, setSecondSkillLevel] = useState<'iniciante' | 'intermediario' | 'avancado'>('iniciante');
   const [marksCount, setMarksCount] = useState(0);
+  const [dynamicTimeRemaining, setDynamicTimeRemaining] = useState(0);
   const { toast } = useToast();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+
+  // Send heartbeat every 15 seconds
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const sendHeartbeat = async () => {
+      try {
+        await supabase.rpc('update_user_heartbeat');
+      } catch (error) {
+        console.error('Erro ao enviar heartbeat:', error);
+      }
+    };
+
+    // Send immediately
+    sendHeartbeat();
+
+    // Then every 15 seconds
+    const heartbeatInterval = setInterval(sendHeartbeat, 15000);
+
+    return () => clearInterval(heartbeatInterval);
+  }, [user?.id]);
 
   // Initialize fila and load data
   useEffect(() => {
     const initializeAndLoadData = async () => {
       try {
-        // Initialize fila if empty
         await supabase.rpc('initialize_fila_if_empty');
-        
-        // Load fila data
         await loadFilaData();
-        
-        // Load volleyball queue entries
         await loadVolleyballQueue();
       } catch (error) {
         console.error('Erro ao inicializar dados:', error);
@@ -74,20 +92,34 @@ const VolleyballQueue = () => {
     initializeAndLoadData();
   }, []);
 
-  // Timer effect - check and advance fila every second
+  // Dynamic timer - recalculate based on iniciou_em every second
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const { data: advancedFila } = await supabase.rpc('advance_fila');
-        if (advancedFila && advancedFila.length > 0) {
-          setActiveFila(advancedFila[0]);
-        }
-      } catch (error) {
-        console.error('Erro ao avançar fila:', error);
+    const updateTimer = () => {
+      if (activeFila?.iniciou_em) {
+        const startTime = new Date(activeFila.iniciou_em).getTime();
+        const now = new Date().getTime();
+        const elapsedSeconds = Math.floor((now - startTime) / 1000);
+        const remaining = Math.max(0, 60 - elapsedSeconds);
+        setDynamicTimeRemaining(remaining);
+      } else {
+        setDynamicTimeRemaining(0);
       }
-    }, 1000);
+    };
 
-    return () => clearInterval(interval);
+    updateTimer(); // Calculate immediately
+    const timerInterval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(timerInterval);
+  }, [activeFila?.iniciou_em]);
+
+  // Refresh fila state every 5 seconds
+  useEffect(() => {
+    const refreshInterval = setInterval(async () => {
+      await loadFilaData();
+      await loadVolleyballQueue();
+    }, 5000);
+
+    return () => clearInterval(refreshInterval);
   }, []);
 
   const loadFilaData = async () => {
@@ -168,7 +200,7 @@ const VolleyballQueue = () => {
   };
 
   const canMarkNames = () => {
-    return isMyTurn() && (activeFila?.remaining_seconds || 0) > 0 && marksCount < 2;
+    return isMyTurn() && dynamicTimeRemaining > 0 && marksCount < 2;
   };
 
   const markFirstName = async () => {
@@ -329,9 +361,9 @@ const VolleyballQueue = () => {
                 </Badge>
               </div>
               
-              <div className={`text-3xl font-bold ${(activeFila.remaining_seconds || 0) <= 10 ? 'text-warning animate-pulse-sport' : 'text-primary'}`}>
+              <div className={`text-3xl font-bold ${dynamicTimeRemaining <= 10 ? 'text-warning animate-pulse-sport' : 'text-primary'}`}>
                 <Clock className="inline h-6 w-6 mr-2" />
-                {formatTime(activeFila.remaining_seconds || 0)}
+                {formatTime(dynamicTimeRemaining)}
               </div>
 
               {isMyTurn() && (
