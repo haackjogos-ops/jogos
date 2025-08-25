@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Clock, Users, UserPlus, Timer, Plus } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Clock, Users, UserPlus, Timer, Plus, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +17,8 @@ interface Player {
   markedAt: Date;
   position: number;
   isWaiting: boolean;
+  skillLevel: 'iniciante' | 'intermediario' | 'avancado';
+  markedByUserId: string;
 }
 
 interface QueueUser {
@@ -33,8 +37,11 @@ const VolleyballQueue = () => {
   const [secondName, setSecondName] = useState('');
   const [showSecondNameInput, setShowSecondNameInput] = useState(false);
   const [hasMarkedSelf, setHasMarkedSelf] = useState(false);
+  const [skillLevel, setSkillLevel] = useState<'iniciante' | 'intermediario' | 'avancado'>('iniciante');
+  const [secondSkillLevel, setSecondSkillLevel] = useState<'iniciante' | 'intermediario' | 'avancado'>('iniciante');
   const { toast } = useToast();
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
 
   // Load users and queue entries from Supabase
   useEffect(() => {
@@ -70,7 +77,9 @@ const VolleyballQueue = () => {
             email: '',
             markedAt: new Date(entry.marked_at),
             position: entry.position,
-            isWaiting: entry.is_waiting
+            isWaiting: entry.is_waiting,
+            skillLevel: entry.skill_level as 'iniciante' | 'intermediario' | 'avancado',
+            markedByUserId: entry.marked_by_user_id
           }));
 
         const waiting = queueEntries
@@ -81,7 +90,9 @@ const VolleyballQueue = () => {
             email: '',
             markedAt: new Date(entry.marked_at),
             position: entry.position,
-            isWaiting: entry.is_waiting
+            isWaiting: entry.is_waiting,
+            skillLevel: entry.skill_level as 'iniciante' | 'intermediario' | 'avancado',
+            markedByUserId: entry.marked_by_user_id
           }));
 
         setConfirmedPlayers(confirmed);
@@ -141,7 +152,8 @@ const VolleyballQueue = () => {
           player_name: currentPlayer.name,
           marked_by_user_id: user?.id,
           position: position,
-          is_waiting: isWaiting
+          is_waiting: isWaiting,
+          skill_level: skillLevel
         })
         .select()
         .single();
@@ -154,7 +166,9 @@ const VolleyballQueue = () => {
         email: currentPlayer.email,
         markedAt: new Date(data.marked_at),
         position: data.position,
-        isWaiting: data.is_waiting
+        isWaiting: data.is_waiting,
+        skillLevel: data.skill_level as 'iniciante' | 'intermediario' | 'avancado',
+        markedByUserId: data.marked_by_user_id
       };
 
       if (!isWaiting) {
@@ -201,7 +215,8 @@ const VolleyballQueue = () => {
           player_name: secondName.trim(),
           marked_by_user_id: user?.id,
           position: position,
-          is_waiting: isWaiting
+          is_waiting: isWaiting,
+          skill_level: secondSkillLevel
         })
         .select()
         .single();
@@ -214,7 +229,9 @@ const VolleyballQueue = () => {
         email: '',
         markedAt: new Date(data.marked_at),
         position: data.position,
-        isWaiting: data.is_waiting
+        isWaiting: data.is_waiting,
+        skillLevel: data.skill_level as 'iniciante' | 'intermediario' | 'avancado',
+        markedByUserId: data.marked_by_user_id
       };
 
       if (!isWaiting) {
@@ -232,6 +249,8 @@ const VolleyballQueue = () => {
       setSecondName('');
       setShowSecondNameInput(false);
       setHasMarkedSelf(false);
+      setSkillLevel('iniciante');
+      setSecondSkillLevel('iniciante');
       setCurrentTurnIndex(prev => prev + 1);
       setTimeRemaining(60);
     } catch (error) {
@@ -244,13 +263,60 @@ const VolleyballQueue = () => {
     }
   };
 
+  const deletePlayer = async (playerId: string) => {
+    try {
+      const { error } = await supabase
+        .from('volleyball_queue')
+        .delete()
+        .eq('id', playerId);
+
+      if (error) {
+        toast({
+          title: "Erro ao excluir",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setConfirmedPlayers(prev => prev.filter(p => p.id !== playerId));
+      setWaitingList(prev => prev.filter(p => p.id !== playerId));
+
+      toast({
+        title: "Marcação excluída",
+        description: "Sua marcação foi removida da lista.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro ao excluir",
+        description: "Tente novamente",
+        variant: "destructive",
+      });
+    }
+  };
+
   const skipSecondName = () => {
     // Reset state and move to next player's turn
     setSecondName('');
     setShowSecondNameInput(false);
     setHasMarkedSelf(false);
+    setSkillLevel('iniciante');
+    setSecondSkillLevel('iniciante');
     setCurrentTurnIndex(prev => prev + 1);
     setTimeRemaining(60);
+  };
+
+  const getSkillLevelBadgeColor = (level: string) => {
+    switch (level) {
+      case 'iniciante':
+        return 'bg-green-100 text-green-800';
+      case 'intermediario':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'avancado':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
   };
 
   const formatTime = (seconds: number) => {
@@ -270,9 +336,16 @@ const VolleyballQueue = () => {
           <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
             🏐 Quadra de Vôlei
           </h1>
-          <Button onClick={signOut} variant="outline" size="sm">
-            Sair
-          </Button>
+          <div className="flex gap-2">
+            {user?.email === 'ptairone@hotmail.com' && (
+              <Button onClick={() => navigate('/admin')} variant="outline" size="sm">
+                Admin
+              </Button>
+            )}
+            <Button onClick={signOut} variant="outline" size="sm">
+              Sair
+            </Button>
+          </div>
         </div>
         <p className="text-muted-foreground">Sistema de marcação em fila</p>
       </div>
@@ -302,6 +375,17 @@ const VolleyballQueue = () => {
 
               {isMyTurn() && !showSecondNameInput && (
                 <div className="space-y-3">
+                  <Select value={skillLevel} onValueChange={(value: 'iniciante' | 'intermediario' | 'avancado') => setSkillLevel(value)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Selecione seu nível" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="iniciante">Iniciante</SelectItem>
+                      <SelectItem value="intermediario">Intermediário</SelectItem>
+                      <SelectItem value="avancado">Avançado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
                   <Button 
                     onClick={markMyName} 
                     variant="sport" 
@@ -326,6 +410,18 @@ const VolleyballQueue = () => {
                     onChange={(e) => setSecondName(e.target.value)}
                     className="w-full"
                   />
+                  
+                  <Select value={secondSkillLevel} onValueChange={(value: 'iniciante' | 'intermediario' | 'avancado') => setSecondSkillLevel(value)}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Nível da segunda pessoa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="iniciante">Iniciante</SelectItem>
+                      <SelectItem value="intermediario">Intermediário</SelectItem>
+                      <SelectItem value="avancado">Avançado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  
                   <div className="flex gap-2">
                     <Button 
                       onClick={markSecondName} 
@@ -400,11 +496,28 @@ const VolleyballQueue = () => {
                     <Badge variant="outline" className="text-xs">
                       {index + 1}
                     </Badge>
-                    <span className="font-medium">{player.name}</span>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{player.name}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${getSkillLevelBadgeColor(player.skillLevel)}`}>
+                        {player.skillLevel}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    {player.markedAt.toLocaleTimeString()}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {player.markedAt.toLocaleTimeString()}
+                    </span>
+                    {player.markedByUserId === user?.id && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => deletePlayer(player.id)}
+                        className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -436,11 +549,28 @@ const VolleyballQueue = () => {
                     <Badge variant="outline" className="text-xs">
                       {index + 1}
                     </Badge>
-                    <span className="font-medium">{player.name}</span>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{player.name}</span>
+                      <span className={`text-xs px-2 py-1 rounded-full ${getSkillLevelBadgeColor(player.skillLevel)}`}>
+                        {player.skillLevel}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xs text-muted-foreground">
-                    {player.markedAt.toLocaleTimeString()}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {player.markedAt.toLocaleTimeString()}
+                    </span>
+                    {player.markedByUserId === user?.id && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => deletePlayer(player.id)}
+                        className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

@@ -166,6 +166,7 @@ export type Database = {
           marked_by_user_id: string | null
           player_name: string
           position: number
+          skill_level: string | null
           updated_at: string
         }
         Insert: {
@@ -176,6 +177,7 @@ export type Database = {
           marked_by_user_id?: string | null
           player_name: string
           position: number
+          skill_level?: string | null
           updated_at?: string
         }
         Update: {
@@ -186,6 +188,7 @@ export type Database = {
           marked_by_user_id?: string | null
           player_name?: string
           position?: number
+          skill_level?: string | null
           updated_at?: string
         }
         Relationships: []
