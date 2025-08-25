@@ -176,6 +176,27 @@ export type Database = {
         }
         Relationships: []
       }
+      user_presence: {
+        Row: {
+          is_online: boolean
+          last_seen: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          is_online?: boolean
+          last_seen?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          is_online?: boolean
+          last_seen?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       volleyball_queue: {
         Row: {
           created_at: string
@@ -234,6 +255,20 @@ export type Database = {
           usuario_id: string
         }[]
       }
+      advance_fila_with_offline_check: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          concluiu_em: string
+          id: string
+          iniciou_em: string
+          nome_usuario: string
+          ordem: number
+          remaining_seconds: number
+          status: Database["public"]["Enums"]["fila_status"]
+          usuario_id: string
+          was_advanced: boolean
+        }[]
+      }
       get_active_fila: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -248,6 +283,14 @@ export type Database = {
         }[]
       }
       initialize_fila_if_empty: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      mark_offline_users: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      update_user_heartbeat: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
