@@ -13,6 +13,8 @@ interface Player {
   name: string;
   email: string;
   markedAt: Date;
+  position: number;
+  isWaiting: boolean;
 }
 
 interface QueueUser {
@@ -66,7 +68,9 @@ const VolleyballQueue = () => {
             id: entry.id,
             name: entry.player_name,
             email: '',
-            markedAt: new Date(entry.marked_at)
+            markedAt: new Date(entry.marked_at),
+            position: entry.position,
+            isWaiting: entry.is_waiting
           }));
 
         const waiting = queueEntries
@@ -75,7 +79,9 @@ const VolleyballQueue = () => {
             id: entry.id,
             name: entry.player_name,
             email: '',
-            markedAt: new Date(entry.marked_at)
+            markedAt: new Date(entry.marked_at),
+            position: entry.position,
+            isWaiting: entry.is_waiting
           }));
 
         setConfirmedPlayers(confirmed);
@@ -147,6 +153,8 @@ const VolleyballQueue = () => {
         name: currentPlayer.name,
         email: currentPlayer.email,
         markedAt: new Date(data.marked_at),
+        position: data.position,
+        isWaiting: data.is_waiting
       };
 
       if (!isWaiting) {
@@ -205,6 +213,8 @@ const VolleyballQueue = () => {
         name: secondName.trim(),
         email: '',
         markedAt: new Date(data.marked_at),
+        position: data.position,
+        isWaiting: data.is_waiting
       };
 
       if (!isWaiting) {
