@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Clock, Users, UserPlus, Timer, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Player {
@@ -27,11 +28,11 @@ const VolleyballQueue = () => {
   const [currentTurnIndex, setCurrentTurnIndex] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(60);
   const [userQueue, setUserQueue] = useState<QueueUser[]>([]);
-  const [currentUser, setCurrentUser] = useState(null);
   const [secondName, setSecondName] = useState('');
   const [showSecondNameInput, setShowSecondNameInput] = useState(false);
   const [hasMarkedSelf, setHasMarkedSelf] = useState(false);
   const { toast } = useToast();
+  const { user, signOut } = useAuth();
 
   // Load users from Supabase
   useEffect(() => {
@@ -52,13 +53,7 @@ const VolleyballQueue = () => {
       }
     };
 
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setCurrentUser(user);
-    };
-
     loadUsers();
-    getCurrentUser();
   }, []);
 
   // Timer effect
@@ -81,7 +76,7 @@ const VolleyballQueue = () => {
   }, [timeRemaining, currentTurnIndex, userQueue.length, toast]);
 
   const isMyTurn = () => {
-    return userQueue[currentTurnIndex]?.id === currentUser?.id;
+    return userQueue[currentTurnIndex]?.id === user?.id;
   };
 
   const canMarkName = () => {
@@ -179,9 +174,14 @@ const VolleyballQueue = () => {
     <div className="min-h-screen bg-background p-4 space-y-6">
       {/* Header */}
       <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-          🏐 Quadra de Vôlei
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+            🏐 Quadra de Vôlei
+          </h1>
+          <Button onClick={signOut} variant="outline" size="sm">
+            Sair
+          </Button>
+        </div>
         <p className="text-muted-foreground">Sistema de marcação em fila</p>
       </div>
 
@@ -363,9 +363,9 @@ const VolleyballQueue = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {userQueue.map((user, index) => (
+            {userQueue.map((queueUser, index) => (
               <div 
-                key={user.id}
+                key={queueUser.id}
                 className={`flex items-center justify-between p-3 rounded-lg ${
                   index === currentTurnIndex 
                     ? 'bg-primary/10 border-l-4 border-primary' 
@@ -381,8 +381,8 @@ const VolleyballQueue = () => {
                   >
                     {index + 1}
                   </Badge>
-                  <span className={`font-medium ${user.id === currentUser?.id ? 'text-primary' : ''}`}>
-                    {user.name} {user.id === currentUser?.id && '(Você)'}
+                  <span className={`font-medium ${queueUser.id === user?.id ? 'text-primary' : ''}`}>
+                    {queueUser.name} {queueUser.id === user?.id && '(Você)'}
                   </span>
                 </div>
                 {index === currentTurnIndex && (
