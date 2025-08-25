@@ -21,48 +21,99 @@ interface Player {
   markedByUserId: string;
 }
 
-interface QueueUser {
+interface ActiveFila {
   id: string;
-  name: string;
-  email: string;
-  joinedAt: Date;
+  usuario_id: string;
+  nome_usuario: string;
+  ordem: number;
+  iniciou_em: string | null;
+  concluiu_em: string | null;
+  status: 'pendente' | 'ativo' | 'finalizado';
+  remaining_seconds: number | null;
+}
+
+interface FilaUser {
+  id: string;
+  usuario_id: string;
+  nome_usuario: string;
+  ordem: number;
+  status: 'pendente' | 'ativo' | 'finalizado';
 }
 
 const VolleyballQueue = () => {
   const [confirmedPlayers, setConfirmedPlayers] = useState<Player[]>([]);
   const [waitingList, setWaitingList] = useState<Player[]>([]);
-  const [currentTurnIndex, setCurrentTurnIndex] = useState(0);
-  const [timeRemaining, setTimeRemaining] = useState(60);
-  const [userQueue, setUserQueue] = useState<QueueUser[]>([]);
-  const [secondName, setSecondName] = useState('');
-  const [showSecondNameInput, setShowSecondNameInput] = useState(false);
-  const [hasMarkedSelf, setHasMarkedSelf] = useState(false);
-  const [skillLevel, setSkillLevel] = useState<'iniciante' | 'intermediario' | 'avancado'>('iniciante');
+  const [activeFila, setActiveFila] = useState<ActiveFila | null>(null);
+  const [filaUsers, setFilaUsers] = useState<FilaUser[]>([]);
+  const [firstPlayerName, setFirstPlayerName] = useState('');
+  const [secondPlayerName, setSecondPlayerName] = useState('');
+  const [firstSkillLevel, setFirstSkillLevel] = useState<'iniciante' | 'intermediario' | 'avancado'>('iniciante');
   const [secondSkillLevel, setSecondSkillLevel] = useState<'iniciante' | 'intermediario' | 'avancado'>('iniciante');
+  const [marksCount, setMarksCount] = useState(0);
   const { toast } = useToast();
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
-  // Load users and queue entries from Supabase
+  // Initialize fila and load data
   useEffect(() => {
-    const loadData = async () => {
-      // Load users
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, display_name')
-        .order('created_at');
+    const initializeAndLoadData = async () => {
+      try {
+        // Initialize fila if empty
+        await supabase.rpc('initialize_fila_if_empty');
+        
+        // Load fila data
+        await loadFilaData();
+        
+        // Load volleyball queue entries
+        await loadVolleyballQueue();
+      } catch (error) {
+        console.error('Erro ao inicializar dados:', error);
+      }
+    };
+
+    initializeAndLoadData();
+  }, []);
+
+  // Timer effect - check and advance fila every second
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const { data: advancedFila } = await supabase.rpc('advance_fila');
+        if (advancedFila && advancedFila.length > 0) {
+          setActiveFila(advancedFila[0]);
+        }
+      } catch (error) {
+        console.error('Erro ao avançar fila:', error);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadFilaData = async () => {
+    try {
+      // Load all fila users
+      const { data: filaData } = await supabase
+        .from('fila')
+        .select('*')
+        .order('ordem');
       
-      if (profiles) {
-        const queueUsers = profiles.map(profile => ({
-          id: profile.user_id,
-          name: profile.display_name || 'Usuário',
-          email: '',
-          joinedAt: new Date()
-        }));
-        setUserQueue(queueUsers);
+      if (filaData) {
+        setFilaUsers(filaData);
       }
 
-      // Load current queue entries
+      // Load active fila
+      const { data: activeFilaData } = await supabase.rpc('get_active_fila');
+      if (activeFilaData && activeFilaData.length > 0) {
+        setActiveFila(activeFilaData[0]);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar dados da fila:', error);
+    }
+  };
+
+  const loadVolleyballQueue = async () => {
+    try {
       const { data: queueEntries } = await supabase
         .from('volleyball_queue')
         .select('*')
@@ -97,124 +148,64 @@ const VolleyballQueue = () => {
 
         setConfirmedPlayers(confirmed);
         setWaitingList(waiting);
-      }
 
-      // Load queue state
-      const { data: queueStateData } = await supabase
-        .from('queue_state')
-        .select('*')
-        .limit(1)
-        .single();
-
-      if (queueStateData) {
-        setCurrentTurnIndex(queueStateData.current_turn_index);
-        setTimeRemaining(queueStateData.time_remaining);
-      }
-    };
-
-    loadData();
-  }, []);
-
-  // Timer effect
-  useEffect(() => {
-    if (currentTurnIndex < userQueue.length && timeRemaining > 0) {
-      const timer = setTimeout(async () => {
-        const newTime = timeRemaining - 1;
-        setTimeRemaining(newTime);
-        // Save time every 10 seconds to avoid too many updates
-        if (newTime % 10 === 0) {
-          await updateQueueState(currentTurnIndex, newTime);
+        // Count marks for current user in this turn
+        if (activeFila && activeFila.iniciou_em) {
+          const userMarks = queueEntries.filter(entry => 
+            entry.marked_by_user_id === user?.id &&
+            new Date(entry.marked_at) >= new Date(activeFila.iniciou_em!)
+          );
+          setMarksCount(userMarks.length);
         }
-      }, 1000);
-      return () => clearTimeout(timer);
-    } else if (timeRemaining === 0) {
-      // Time expired, move to next user
-      const newIndex = currentTurnIndex + 1;
-      setCurrentTurnIndex(newIndex);
-      setTimeRemaining(60);
-      updateQueueState(newIndex, 60);
-      toast({
-        title: "Tempo esgotado!",
-        description: "Passando para o próximo jogador.",
-        variant: "destructive",
-      });
+      }
+    } catch (error) {
+      console.error('Erro ao carregar fila de volei:', error);
     }
-  }, [timeRemaining, currentTurnIndex, userQueue.length, toast]);
+  };
 
   const isMyTurn = () => {
-    return userQueue[currentTurnIndex]?.id === user?.id;
+    return activeFila?.usuario_id === user?.id;
   };
 
-  const canMarkName = () => {
-    return isMyTurn() && timeRemaining > 0;
+  const canMarkNames = () => {
+    return isMyTurn() && (activeFila?.remaining_seconds || 0) > 0 && marksCount < 2;
   };
 
-  const markMyName = async () => {
-    if (!canMarkName()) {
+  const markFirstName = async () => {
+    if (!firstPlayerName.trim()) {
       toast({
-        title: "Aguarde sua vez!",
-        description: "Você só pode marcar quando for sua vez.",
+        title: "Nome obrigatório",
+        description: "Digite seu nome para marcar.",
         variant: "destructive",
       });
       return;
     }
 
-    const currentPlayer = userQueue[currentTurnIndex];
-    const isWaiting = confirmedPlayers.length >= 12;
-    const position = isWaiting ? waitingList.length + 1 : confirmedPlayers.length + 1;
-
     try {
-      // Save to database
-      const { data, error } = await supabase
-        .from('volleyball_queue')
-        .insert({
-          player_name: currentPlayer.name,
-          marked_by_user_id: user?.id,
-          position: position,
-          is_waiting: isWaiting,
-          skill_level: skillLevel
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      const newPlayer: Player = {
-        id: data.id,
-        name: currentPlayer.name,
-        email: currentPlayer.email,
-        markedAt: new Date(data.marked_at),
-        position: data.position,
-        isWaiting: data.is_waiting,
-        skillLevel: data.skill_level as 'iniciante' | 'intermediario' | 'avancado',
-        markedByUserId: data.marked_by_user_id
-      };
-
-      if (!isWaiting) {
-        setConfirmedPlayers(prev => [...prev, newPlayer]);
-      } else {
-        setWaitingList(prev => [...prev, newPlayer]);
-      }
-
-      setHasMarkedSelf(true);
-      setShowSecondNameInput(true);
+      await supabase.rpc('add_volleyball_mark', {
+        player_name: firstPlayerName.trim(),
+        skill_level: firstSkillLevel
+      });
 
       toast({
         title: "Nome marcado!",
-        description: `${currentPlayer.name} foi adicionado à lista.`,
+        description: `${firstPlayerName} foi adicionado à lista.`,
       });
-    } catch (error) {
-      console.error('Erro ao marcar nome:', error);
+
+      setFirstPlayerName('');
+      setMarksCount(prev => prev + 1);
+      await loadVolleyballQueue();
+    } catch (error: any) {
       toast({
         title: "Erro ao marcar",
-        description: "Tente novamente.",
+        description: error.message || "Tente novamente.",
         variant: "destructive",
       });
     }
   };
 
   const markSecondName = async () => {
-    if (!secondName.trim()) {
+    if (!secondPlayerName.trim()) {
       toast({
         title: "Nome obrigatório",
         description: "Digite o nome da segunda pessoa.",
@@ -223,62 +214,24 @@ const VolleyballQueue = () => {
       return;
     }
 
-    const isWaiting = confirmedPlayers.length >= 12;
-    const position = isWaiting ? waitingList.length + 1 : confirmedPlayers.length + 1;
-
     try {
-      // Save to database
-      const { data, error } = await supabase
-        .from('volleyball_queue')
-        .insert({
-          player_name: secondName.trim(),
-          marked_by_user_id: user?.id,
-          position: position,
-          is_waiting: isWaiting,
-          skill_level: secondSkillLevel
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      const newPlayer: Player = {
-        id: data.id,
-        name: secondName.trim(),
-        email: '',
-        markedAt: new Date(data.marked_at),
-        position: data.position,
-        isWaiting: data.is_waiting,
-        skillLevel: data.skill_level as 'iniciante' | 'intermediario' | 'avancado',
-        markedByUserId: data.marked_by_user_id
-      };
-
-      if (!isWaiting) {
-        setConfirmedPlayers(prev => [...prev, newPlayer]);
-      } else {
-        setWaitingList(prev => [...prev, newPlayer]);
-      }
+      await supabase.rpc('add_volleyball_mark', {
+        player_name: secondPlayerName.trim(),
+        skill_level: secondSkillLevel
+      });
 
       toast({
         title: "Segundo nome marcado!",
-        description: `${secondName} foi adicionado à lista.`,
+        description: `${secondPlayerName} foi adicionado à lista.`,
       });
 
-      // Reset state and move to next player's turn
-      setSecondName('');
-      setShowSecondNameInput(false);
-      setHasMarkedSelf(false);
-      setSkillLevel('iniciante');
-      setSecondSkillLevel('iniciante');
-      const newIndex = currentTurnIndex + 1;
-      setCurrentTurnIndex(newIndex);
-      setTimeRemaining(60);
-      await updateQueueState(newIndex, 60);
-    } catch (error) {
-      console.error('Erro ao marcar segundo nome:', error);
+      setSecondPlayerName('');
+      setMarksCount(prev => prev + 1);
+      await loadVolleyballQueue();
+    } catch (error: any) {
       toast({
         title: "Erro ao marcar",
-        description: "Tente novamente.",
+        description: error.message || "Tente novamente.",
         variant: "destructive",
       });
     }
@@ -300,13 +253,12 @@ const VolleyballQueue = () => {
         return;
       }
 
-      setConfirmedPlayers(prev => prev.filter(p => p.id !== playerId));
-      setWaitingList(prev => prev.filter(p => p.id !== playerId));
-
       toast({
         title: "Marcação excluída",
         description: "Sua marcação foi removida da lista.",
       });
+
+      await loadVolleyballQueue();
     } catch (error) {
       toast({
         title: "Erro ao excluir",
@@ -314,33 +266,6 @@ const VolleyballQueue = () => {
         variant: "destructive",
       });
     }
-  };
-
-  const updateQueueState = async (turnIndex: number, timeLeft: number) => {
-    try {
-      await supabase
-        .from('queue_state')
-        .update({
-          current_turn_index: turnIndex,
-          time_remaining: timeLeft
-        })
-        .limit(1);
-    } catch (error) {
-      console.error('Erro ao salvar estado da fila:', error);
-    }
-  };
-
-  const skipSecondName = async () => {
-    // Reset state and move to next player's turn
-    setSecondName('');
-    setShowSecondNameInput(false);
-    setHasMarkedSelf(false);
-    setSkillLevel('iniciante');
-    setSecondSkillLevel('iniciante');
-    const newIndex = currentTurnIndex + 1;
-    setCurrentTurnIndex(newIndex);
-    setTimeRemaining(60);
-    await updateQueueState(newIndex, 60);
   };
 
   const getSkillLevelBadgeColor = (level: string) => {
@@ -362,7 +287,6 @@ const VolleyballQueue = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const currentPlayer = userQueue[currentTurnIndex];
   const spotsRemaining = Math.max(0, 12 - confirmedPlayers.length);
 
   return (
@@ -396,96 +320,100 @@ const VolleyballQueue = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="text-center space-y-4">
-          {currentPlayer ? (
+          {activeFila ? (
             <>
               <div className="space-y-2">
-                <p className="text-lg font-semibold">{currentPlayer.name}</p>
+                <p className="text-lg font-semibold">{activeFila.nome_usuario}</p>
                 <Badge variant={isMyTurn() ? "default" : "secondary"} className="text-sm">
                   {isMyTurn() ? "SUA VEZ!" : "Aguarde..."}
                 </Badge>
               </div>
               
-              <div className={`text-3xl font-bold ${timeRemaining <= 10 ? 'text-warning animate-pulse-sport' : 'text-primary'}`}>
+              <div className={`text-3xl font-bold ${(activeFila.remaining_seconds || 0) <= 10 ? 'text-warning animate-pulse-sport' : 'text-primary'}`}>
                 <Clock className="inline h-6 w-6 mr-2" />
-                {formatTime(timeRemaining)}
+                {formatTime(activeFila.remaining_seconds || 0)}
               </div>
 
-              {isMyTurn() && !showSecondNameInput && (
-                <div className="space-y-3">
-                  <Select value={skillLevel} onValueChange={(value: 'iniciante' | 'intermediario' | 'avancado') => setSkillLevel(value)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Selecione seu nível" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="iniciante">Iniciante</SelectItem>
-                      <SelectItem value="intermediario">Intermediário</SelectItem>
-                      <SelectItem value="avancado">Avançado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  <Button 
-                    onClick={markMyName} 
-                    variant="sport" 
-                    size="lg"
-                    disabled={!canMarkName() || hasMarkedSelf}
-                    className="w-full"
-                  >
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Marcar Meu Nome
-                  </Button>
+              {isMyTurn() && (
+                <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Você pode marcar até 2 nomes em {formatTime(timeRemaining)}
+                    Você pode marcar até 2 nomes. Já marcou: {marksCount}/2
                   </p>
-                </div>
-              )}
+                  
+                  {marksCount < 1 && (
+                    <div className="space-y-3 p-4 bg-accent/10 rounded-lg">
+                      <h4 className="font-medium">Primeiro Nome</h4>
+                      <Input
+                        placeholder="Seu nome"
+                        value={firstPlayerName}
+                        onChange={(e) => setFirstPlayerName(e.target.value)}
+                      />
+                      <Select value={firstSkillLevel} onValueChange={(value: 'iniciante' | 'intermediario' | 'avancado') => setFirstSkillLevel(value)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione seu nível" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="iniciante">Iniciante</SelectItem>
+                          <SelectItem value="intermediario">Intermediário</SelectItem>
+                          <SelectItem value="avancado">Avançado</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button 
+                        onClick={markFirstName} 
+                        variant="sport" 
+                        size="lg"
+                        disabled={!canMarkNames()}
+                        className="w-full"
+                      >
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Marcar Primeiro Nome
+                      </Button>
+                    </div>
+                  )}
 
-              {isMyTurn() && showSecondNameInput && (
-                <div className="space-y-3">
-                  <Input
-                    placeholder="Nome da segunda pessoa"
-                    value={secondName}
-                    onChange={(e) => setSecondName(e.target.value)}
-                    className="w-full"
-                  />
-                  
-                  <Select value={secondSkillLevel} onValueChange={(value: 'iniciante' | 'intermediario' | 'avancado') => setSecondSkillLevel(value)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Nível da segunda pessoa" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="iniciante">Iniciante</SelectItem>
-                      <SelectItem value="intermediario">Intermediário</SelectItem>
-                      <SelectItem value="avancado">Avançado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  <div className="flex gap-2">
-                    <Button 
-                      onClick={markSecondName} 
-                      variant="sport" 
-                      size="lg"
-                      className="flex-1"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Marcar
-                    </Button>
-                    <Button 
-                      onClick={skipSecondName} 
-                      variant="outline" 
-                      size="lg"
-                      className="flex-1"
-                    >
-                      Pular
-                    </Button>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Tempo restante: {formatTime(timeRemaining)}
-                  </p>
+                  {marksCount >= 1 && marksCount < 2 && (
+                    <div className="space-y-3 p-4 bg-warning/10 rounded-lg">
+                      <h4 className="font-medium">Segundo Nome (Opcional)</h4>
+                      <Input
+                        placeholder="Nome da segunda pessoa"
+                        value={secondPlayerName}
+                        onChange={(e) => setSecondPlayerName(e.target.value)}
+                      />
+                      <Select value={secondSkillLevel} onValueChange={(value: 'iniciante' | 'intermediario' | 'avancado') => setSecondSkillLevel(value)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Nível da segunda pessoa" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="iniciante">Iniciante</SelectItem>
+                          <SelectItem value="intermediario">Intermediário</SelectItem>
+                          <SelectItem value="avancado">Avançado</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button 
+                        onClick={markSecondName} 
+                        variant="sport" 
+                        size="lg"
+                        disabled={!canMarkNames()}
+                        className="w-full"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Marcar Segundo Nome
+                      </Button>
+                    </div>
+                  )}
+
+                  {marksCount >= 2 && (
+                    <div className="p-4 bg-green-100/50 rounded-lg">
+                      <p className="text-green-800 font-medium">
+                        ✅ Você já marcou 2 nomes. Aguarde o próximo turno!
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </>
           ) : (
-            <p className="text-muted-foreground">Todos os jogadores já marcaram!</p>
+            <p className="text-muted-foreground">Carregando fila...</p>
           )}
         </CardContent>
       </Card>
@@ -622,34 +550,34 @@ const VolleyballQueue = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {userQueue.map((queueUser, index) => (
+            {filaUsers.map((filaUser, index) => (
               <div 
-                key={queueUser.id}
+                key={filaUser.id}
                 className={`flex items-center justify-between p-3 rounded-lg ${
-                  index === currentTurnIndex 
+                  filaUser.status === 'ativo'
                     ? 'bg-primary/10 border-l-4 border-primary' 
-                    : index < currentTurnIndex 
+                    : filaUser.status === 'finalizado'
                       ? 'bg-muted/50 opacity-60' 
                       : 'bg-muted/20'
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <Badge 
-                    variant={index === currentTurnIndex ? "default" : "outline"} 
+                    variant={filaUser.status === 'ativo' ? "default" : "outline"} 
                     className="text-xs"
                   >
-                    {index + 1}
+                    {filaUser.ordem}
                   </Badge>
-                  <span className={`font-medium ${queueUser.id === user?.id ? 'text-primary' : ''}`}>
-                    {queueUser.name} {queueUser.id === user?.id && '(Você)'}
+                  <span className={`font-medium ${filaUser.usuario_id === user?.id ? 'text-primary' : ''}`}>
+                    {filaUser.nome_usuario} {filaUser.usuario_id === user?.id && '(Você)'}
                   </span>
                 </div>
-                {index === currentTurnIndex && (
+                {filaUser.status === 'ativo' && (
                   <Badge variant="default" className="animate-bounce-soft">
                     Ativo
                   </Badge>
                 )}
-                {index < currentTurnIndex && (
+                {filaUser.status === 'finalizado' && (
                   <Badge variant="outline" className="text-accent">
                     Concluído
                   </Badge>
