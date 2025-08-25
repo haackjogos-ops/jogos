@@ -112,12 +112,20 @@ const VolleyballQueue = () => {
     return () => clearInterval(timerInterval);
   }, [activeFila?.iniciou_em]);
 
-  // Refresh fila state every 5 seconds
+  // Advance fila and refresh every second
   useEffect(() => {
     const refreshInterval = setInterval(async () => {
-      await loadFilaData();
-      await loadVolleyballQueue();
-    }, 5000);
+      try {
+        const { data: advanced } = await supabase.rpc('advance_fila_with_offline_check');
+        if (advanced && advanced.length > 0) {
+          setActiveFila(advanced[0]);
+        }
+        await loadFilaData();
+        await loadVolleyballQueue();
+      } catch (e) {
+        console.error('Erro ao avançar/atualizar fila:', e);
+      }
+    }, 1000);
 
     return () => clearInterval(refreshInterval);
   }, []);
