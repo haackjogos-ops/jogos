@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Users, UserPlus, Timer } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Clock, Users, UserPlus, Timer, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Player {
   id: string;
@@ -12,19 +14,52 @@ interface Player {
   markedAt: Date;
 }
 
+interface QueueUser {
+  id: string;
+  name: string;
+  email: string;
+  joinedAt: Date;
+}
+
 const VolleyballQueue = () => {
   const [confirmedPlayers, setConfirmedPlayers] = useState<Player[]>([]);
   const [waitingList, setWaitingList] = useState<Player[]>([]);
   const [currentTurnIndex, setCurrentTurnIndex] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState(60);
-  const [userQueue] = useState([
-    { id: '1', name: 'Ana Silva', email: 'ana@email.com', joinedAt: new Date() },
-    { id: '2', name: 'João Santos', email: 'joao@email.com', joinedAt: new Date() },
-    { id: '3', name: 'Maria Costa', email: 'maria@email.com', joinedAt: new Date() },
-    { id: '4', name: 'Pedro Lima', email: 'pedro@email.com', joinedAt: new Date() },
-  ]);
-  const [currentUserId] = useState('1'); // Simulating logged user
+  const [userQueue, setUserQueue] = useState<QueueUser[]>([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [secondName, setSecondName] = useState('');
+  const [showSecondNameInput, setShowSecondNameInput] = useState(false);
+  const [hasMarkedSelf, setHasMarkedSelf] = useState(false);
   const { toast } = useToast();
+
+  // Load users from Supabase
+  useEffect(() => {
+    const loadUsers = async () => {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, display_name')
+        .order('created_at');
+      
+      if (profiles) {
+        const queueUsers = profiles.map(profile => ({
+          id: profile.user_id,
+          name: profile.display_name || 'Usuário',
+          email: '',
+          joinedAt: new Date()
+        }));
+        setUserQueue(queueUsers);
+      }
+    };
+
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+    };
+
+    loadUsers();
+    getCurrentUser();
+  }, []);
 
   // Timer effect
   useEffect(() => {
@@ -46,14 +81,14 @@ const VolleyballQueue = () => {
   }, [timeRemaining, currentTurnIndex, userQueue.length, toast]);
 
   const isMyTurn = () => {
-    return userQueue[currentTurnIndex]?.id === currentUserId;
+    return userQueue[currentTurnIndex]?.id === currentUser?.id;
   };
 
   const canMarkName = () => {
     return isMyTurn() && timeRemaining > 0;
   };
 
-  const markPlayer = (playerName?: string) => {
+  const markMyName = () => {
     if (!canMarkName()) {
       toast({
         title: "Aguarde sua vez!",
@@ -64,11 +99,9 @@ const VolleyballQueue = () => {
     }
 
     const currentPlayer = userQueue[currentTurnIndex];
-    const nameToMark = playerName || currentPlayer.name;
-    
     const newPlayer: Player = {
       id: `player_${Date.now()}`,
-      name: nameToMark,
+      name: currentPlayer.name,
       email: currentPlayer.email,
       markedAt: new Date(),
     };
@@ -79,12 +112,56 @@ const VolleyballQueue = () => {
       setWaitingList(prev => [...prev, newPlayer]);
     }
 
+    setHasMarkedSelf(true);
+    setShowSecondNameInput(true);
+
     toast({
       title: "Nome marcado!",
-      description: `${nameToMark} foi adicionado à lista.`,
+      description: `${currentPlayer.name} foi adicionado à lista.`,
+    });
+  };
+
+  const markSecondName = () => {
+    if (!secondName.trim()) {
+      toast({
+        title: "Nome obrigatório",
+        description: "Digite o nome da segunda pessoa.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newPlayer: Player = {
+      id: `player_${Date.now()}_second`,
+      name: secondName.trim(),
+      email: '',
+      markedAt: new Date(),
+    };
+
+    if (confirmedPlayers.length < 12) {
+      setConfirmedPlayers(prev => [...prev, newPlayer]);
+    } else {
+      setWaitingList(prev => [...prev, newPlayer]);
+    }
+
+    toast({
+      title: "Segundo nome marcado!",
+      description: `${secondName} foi adicionado à lista.`,
     });
 
-    // Move to next player's turn
+    // Reset state and move to next player's turn
+    setSecondName('');
+    setShowSecondNameInput(false);
+    setHasMarkedSelf(false);
+    setCurrentTurnIndex(prev => prev + 1);
+    setTimeRemaining(60);
+  };
+
+  const skipSecondName = () => {
+    // Reset state and move to next player's turn
+    setSecondName('');
+    setShowSecondNameInput(false);
+    setHasMarkedSelf(false);
     setCurrentTurnIndex(prev => prev + 1);
     setTimeRemaining(60);
   };
@@ -131,13 +208,13 @@ const VolleyballQueue = () => {
                 {formatTime(timeRemaining)}
               </div>
 
-              {isMyTurn() && (
+              {isMyTurn() && !showSecondNameInput && (
                 <div className="space-y-3">
                   <Button 
-                    onClick={() => markPlayer()} 
+                    onClick={markMyName} 
                     variant="sport" 
                     size="lg"
-                    disabled={!canMarkName()}
+                    disabled={!canMarkName() || hasMarkedSelf}
                     className="w-full"
                   >
                     <UserPlus className="h-4 w-4 mr-2" />
@@ -145,6 +222,39 @@ const VolleyballQueue = () => {
                   </Button>
                   <p className="text-sm text-muted-foreground">
                     Você pode marcar até 2 nomes em {formatTime(timeRemaining)}
+                  </p>
+                </div>
+              )}
+
+              {isMyTurn() && showSecondNameInput && (
+                <div className="space-y-3">
+                  <Input
+                    placeholder="Nome da segunda pessoa"
+                    value={secondName}
+                    onChange={(e) => setSecondName(e.target.value)}
+                    className="w-full"
+                  />
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={markSecondName} 
+                      variant="sport" 
+                      size="lg"
+                      className="flex-1"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Marcar
+                    </Button>
+                    <Button 
+                      onClick={skipSecondName} 
+                      variant="outline" 
+                      size="lg"
+                      className="flex-1"
+                    >
+                      Pular
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Tempo restante: {formatTime(timeRemaining)}
                   </p>
                 </div>
               )}
@@ -271,8 +381,8 @@ const VolleyballQueue = () => {
                   >
                     {index + 1}
                   </Badge>
-                  <span className={`font-medium ${user.id === currentUserId ? 'text-primary' : ''}`}>
-                    {user.name} {user.id === currentUserId && '(Você)'}
+                  <span className={`font-medium ${user.id === currentUser?.id ? 'text-primary' : ''}`}>
+                    {user.name} {user.id === currentUser?.id && '(Você)'}
                   </span>
                 </div>
                 {index === currentTurnIndex && (
