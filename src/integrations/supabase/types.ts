@@ -47,6 +47,42 @@ export type Database = {
         }
         Relationships: []
       }
+      fila: {
+        Row: {
+          concluiu_em: string | null
+          created_at: string
+          id: string
+          iniciou_em: string | null
+          nome_usuario: string
+          ordem: number
+          status: Database["public"]["Enums"]["fila_status"]
+          updated_at: string
+          usuario_id: string
+        }
+        Insert: {
+          concluiu_em?: string | null
+          created_at?: string
+          id?: string
+          iniciou_em?: string | null
+          nome_usuario: string
+          ordem: number
+          status?: Database["public"]["Enums"]["fila_status"]
+          updated_at?: string
+          usuario_id: string
+        }
+        Update: {
+          concluiu_em?: string | null
+          created_at?: string
+          id?: string
+          iniciou_em?: string | null
+          nome_usuario?: string
+          ordem?: number
+          status?: Database["public"]["Enums"]["fila_status"]
+          updated_at?: string
+          usuario_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -140,47 +176,6 @@ export type Database = {
         }
         Relationships: []
       }
-      user_study_progress: {
-        Row: {
-          completed: boolean | null
-          completed_at: string | null
-          created_at: string
-          id: string
-          notes: string | null
-          study_id: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          completed?: boolean | null
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          notes?: string | null
-          study_id: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          completed?: boolean | null
-          completed_at?: string | null
-          created_at?: string
-          id?: string
-          notes?: string | null
-          study_id?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "user_study_progress_study_id_fkey"
-            columns: ["study_id"]
-            isOneToOne: false
-            referencedRelation: "studies"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       volleyball_queue: {
         Row: {
           created_at: string
@@ -222,10 +217,43 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      add_volleyball_mark: {
+        Args: { player_name: string; skill_level?: string }
+        Returns: string
+      }
+      advance_fila: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          concluiu_em: string
+          id: string
+          iniciou_em: string
+          nome_usuario: string
+          ordem: number
+          remaining_seconds: number
+          status: Database["public"]["Enums"]["fila_status"]
+          usuario_id: string
+        }[]
+      }
+      get_active_fila: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          concluiu_em: string
+          id: string
+          iniciou_em: string
+          nome_usuario: string
+          ordem: number
+          remaining_seconds: number
+          status: Database["public"]["Enums"]["fila_status"]
+          usuario_id: string
+        }[]
+      }
+      initialize_fila_if_empty: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
-      [_ in never]: never
+      fila_status: "pendente" | "ativo" | "finalizado"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -352,6 +380,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      fila_status: ["pendente", "ativo", "finalizado"],
+    },
   },
 } as const
