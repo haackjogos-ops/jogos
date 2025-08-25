@@ -80,6 +80,30 @@ export type Database = {
         }
         Relationships: []
       }
+      queue_state: {
+        Row: {
+          created_at: string
+          current_turn_index: number
+          id: string
+          time_remaining: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_turn_index?: number
+          id?: string
+          time_remaining?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_turn_index?: number
+          id?: string
+          time_remaining?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       studies: {
         Row: {
           bible_reference: string | null

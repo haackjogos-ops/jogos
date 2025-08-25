@@ -98,6 +98,18 @@ const VolleyballQueue = () => {
         setConfirmedPlayers(confirmed);
         setWaitingList(waiting);
       }
+
+      // Load queue state
+      const { data: queueStateData } = await supabase
+        .from('queue_state')
+        .select('*')
+        .limit(1)
+        .single();
+
+      if (queueStateData) {
+        setCurrentTurnIndex(queueStateData.current_turn_index);
+        setTimeRemaining(queueStateData.time_remaining);
+      }
     };
 
     loadData();
@@ -106,14 +118,21 @@ const VolleyballQueue = () => {
   // Timer effect
   useEffect(() => {
     if (currentTurnIndex < userQueue.length && timeRemaining > 0) {
-      const timer = setTimeout(() => {
-        setTimeRemaining(prev => prev - 1);
+      const timer = setTimeout(async () => {
+        const newTime = timeRemaining - 1;
+        setTimeRemaining(newTime);
+        // Save time every 10 seconds to avoid too many updates
+        if (newTime % 10 === 0) {
+          await updateQueueState(currentTurnIndex, newTime);
+        }
       }, 1000);
       return () => clearTimeout(timer);
     } else if (timeRemaining === 0) {
       // Time expired, move to next user
-      setCurrentTurnIndex(prev => prev + 1);
+      const newIndex = currentTurnIndex + 1;
+      setCurrentTurnIndex(newIndex);
       setTimeRemaining(60);
+      updateQueueState(newIndex, 60);
       toast({
         title: "Tempo esgotado!",
         description: "Passando para o próximo jogador.",
@@ -251,8 +270,10 @@ const VolleyballQueue = () => {
       setHasMarkedSelf(false);
       setSkillLevel('iniciante');
       setSecondSkillLevel('iniciante');
-      setCurrentTurnIndex(prev => prev + 1);
+      const newIndex = currentTurnIndex + 1;
+      setCurrentTurnIndex(newIndex);
       setTimeRemaining(60);
+      await updateQueueState(newIndex, 60);
     } catch (error) {
       console.error('Erro ao marcar segundo nome:', error);
       toast({
@@ -295,15 +316,31 @@ const VolleyballQueue = () => {
     }
   };
 
-  const skipSecondName = () => {
+  const updateQueueState = async (turnIndex: number, timeLeft: number) => {
+    try {
+      await supabase
+        .from('queue_state')
+        .update({
+          current_turn_index: turnIndex,
+          time_remaining: timeLeft
+        })
+        .limit(1);
+    } catch (error) {
+      console.error('Erro ao salvar estado da fila:', error);
+    }
+  };
+
+  const skipSecondName = async () => {
     // Reset state and move to next player's turn
     setSecondName('');
     setShowSecondNameInput(false);
     setHasMarkedSelf(false);
     setSkillLevel('iniciante');
     setSecondSkillLevel('iniciante');
-    setCurrentTurnIndex(prev => prev + 1);
+    const newIndex = currentTurnIndex + 1;
+    setCurrentTurnIndex(newIndex);
     setTimeRemaining(60);
+    await updateQueueState(newIndex, 60);
   };
 
   const getSkillLevelBadgeColor = (level: string) => {
