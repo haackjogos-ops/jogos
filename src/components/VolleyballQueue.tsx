@@ -34,9 +34,10 @@ const VolleyballQueue = () => {
   const { toast } = useToast();
   const { user, signOut } = useAuth();
 
-  // Load users from Supabase
+  // Load users and queue entries from Supabase
   useEffect(() => {
-    const loadUsers = async () => {
+    const loadData = async () => {
+      // Load users
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, display_name')
@@ -51,9 +52,38 @@ const VolleyballQueue = () => {
         }));
         setUserQueue(queueUsers);
       }
+
+      // Load current queue entries
+      const { data: queueEntries } = await supabase
+        .from('volleyball_queue')
+        .select('*')
+        .order('position');
+
+      if (queueEntries) {
+        const confirmed = queueEntries
+          .filter(entry => !entry.is_waiting)
+          .map(entry => ({
+            id: entry.id,
+            name: entry.player_name,
+            email: '',
+            markedAt: new Date(entry.marked_at)
+          }));
+
+        const waiting = queueEntries
+          .filter(entry => entry.is_waiting)
+          .map(entry => ({
+            id: entry.id,
+            name: entry.player_name,
+            email: '',
+            markedAt: new Date(entry.marked_at)
+          }));
+
+        setConfirmedPlayers(confirmed);
+        setWaitingList(waiting);
+      }
     };
 
-    loadUsers();
+    loadData();
   }, []);
 
   // Timer effect
@@ -83,7 +113,7 @@ const VolleyballQueue = () => {
     return isMyTurn() && timeRemaining > 0;
   };
 
-  const markMyName = () => {
+  const markMyName = async () => {
     if (!canMarkName()) {
       toast({
         title: "Aguarde sua vez!",
@@ -94,29 +124,55 @@ const VolleyballQueue = () => {
     }
 
     const currentPlayer = userQueue[currentTurnIndex];
-    const newPlayer: Player = {
-      id: `player_${Date.now()}`,
-      name: currentPlayer.name,
-      email: currentPlayer.email,
-      markedAt: new Date(),
-    };
+    const isWaiting = confirmedPlayers.length >= 12;
+    const position = isWaiting ? waitingList.length + 1 : confirmedPlayers.length + 1;
 
-    if (confirmedPlayers.length < 12) {
-      setConfirmedPlayers(prev => [...prev, newPlayer]);
-    } else {
-      setWaitingList(prev => [...prev, newPlayer]);
+    try {
+      // Save to database
+      const { data, error } = await supabase
+        .from('volleyball_queue')
+        .insert({
+          player_name: currentPlayer.name,
+          marked_by_user_id: user?.id,
+          position: position,
+          is_waiting: isWaiting
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newPlayer: Player = {
+        id: data.id,
+        name: currentPlayer.name,
+        email: currentPlayer.email,
+        markedAt: new Date(data.marked_at),
+      };
+
+      if (!isWaiting) {
+        setConfirmedPlayers(prev => [...prev, newPlayer]);
+      } else {
+        setWaitingList(prev => [...prev, newPlayer]);
+      }
+
+      setHasMarkedSelf(true);
+      setShowSecondNameInput(true);
+
+      toast({
+        title: "Nome marcado!",
+        description: `${currentPlayer.name} foi adicionado à lista.`,
+      });
+    } catch (error) {
+      console.error('Erro ao marcar nome:', error);
+      toast({
+        title: "Erro ao marcar",
+        description: "Tente novamente.",
+        variant: "destructive",
+      });
     }
-
-    setHasMarkedSelf(true);
-    setShowSecondNameInput(true);
-
-    toast({
-      title: "Nome marcado!",
-      description: `${currentPlayer.name} foi adicionado à lista.`,
-    });
   };
 
-  const markSecondName = () => {
+  const markSecondName = async () => {
     if (!secondName.trim()) {
       toast({
         title: "Nome obrigatório",
@@ -126,30 +182,56 @@ const VolleyballQueue = () => {
       return;
     }
 
-    const newPlayer: Player = {
-      id: `player_${Date.now()}_second`,
-      name: secondName.trim(),
-      email: '',
-      markedAt: new Date(),
-    };
+    const isWaiting = confirmedPlayers.length >= 12;
+    const position = isWaiting ? waitingList.length + 1 : confirmedPlayers.length + 1;
 
-    if (confirmedPlayers.length < 12) {
-      setConfirmedPlayers(prev => [...prev, newPlayer]);
-    } else {
-      setWaitingList(prev => [...prev, newPlayer]);
+    try {
+      // Save to database
+      const { data, error } = await supabase
+        .from('volleyball_queue')
+        .insert({
+          player_name: secondName.trim(),
+          marked_by_user_id: user?.id,
+          position: position,
+          is_waiting: isWaiting
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newPlayer: Player = {
+        id: data.id,
+        name: secondName.trim(),
+        email: '',
+        markedAt: new Date(data.marked_at),
+      };
+
+      if (!isWaiting) {
+        setConfirmedPlayers(prev => [...prev, newPlayer]);
+      } else {
+        setWaitingList(prev => [...prev, newPlayer]);
+      }
+
+      toast({
+        title: "Segundo nome marcado!",
+        description: `${secondName} foi adicionado à lista.`,
+      });
+
+      // Reset state and move to next player's turn
+      setSecondName('');
+      setShowSecondNameInput(false);
+      setHasMarkedSelf(false);
+      setCurrentTurnIndex(prev => prev + 1);
+      setTimeRemaining(60);
+    } catch (error) {
+      console.error('Erro ao marcar segundo nome:', error);
+      toast({
+        title: "Erro ao marcar",
+        description: "Tente novamente.",
+        variant: "destructive",
+      });
     }
-
-    toast({
-      title: "Segundo nome marcado!",
-      description: `${secondName} foi adicionado à lista.`,
-    });
-
-    // Reset state and move to next player's turn
-    setSecondName('');
-    setShowSecondNameInput(false);
-    setHasMarkedSelf(false);
-    setCurrentTurnIndex(prev => prev + 1);
-    setTimeRemaining(60);
   };
 
   const skipSecondName = () => {

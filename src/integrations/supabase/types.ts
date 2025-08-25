@@ -157,6 +157,39 @@ export type Database = {
           },
         ]
       }
+      volleyball_queue: {
+        Row: {
+          created_at: string
+          id: string
+          is_waiting: boolean
+          marked_at: string
+          marked_by_user_id: string | null
+          player_name: string
+          position: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_waiting?: boolean
+          marked_at?: string
+          marked_by_user_id?: string | null
+          player_name: string
+          position: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_waiting?: boolean
+          marked_at?: string
+          marked_by_user_id?: string | null
+          player_name?: string
+          position?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
