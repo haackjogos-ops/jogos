@@ -1,1 +1,4 @@
 project_id = "fjlseraeptjzjwngcqsm"
+
+[functions.auto-advance-fila]
+verify_jwt = false
