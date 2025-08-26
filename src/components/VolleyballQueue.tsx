@@ -237,7 +237,15 @@ const VolleyballQueue = () => {
   };
 
   const canMarkNames = () => {
-    return isMyTurn() && dynamicTimeRemaining > 0 && marksCount < 2;
+    const confirmedCount = confirmedPlayers.length;
+    
+    // Se ainda há vagas nos 12 primeiros, verificar se é a vez do usuário
+    if (confirmedCount < 12) {
+      return isMyTurn() && dynamicTimeRemaining > 0 && marksCount < 2;
+    }
+    
+    // Após os 12 primeiros, qualquer pessoa pode marcar
+    return true;
   };
 
   const markFirstName = async () => {
@@ -403,11 +411,17 @@ const VolleyballQueue = () => {
                 {formatTime(dynamicTimeRemaining)}
               </div>
 
-              {isMyTurn() && (
+              {(isMyTurn() || confirmedPlayers.length >= 12) && (
                 <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    Você pode marcar até 2 nomes. Já marcou: {marksCount}/2
-                  </p>
+                  {confirmedPlayers.length >= 12 ? (
+                    <p className="text-sm text-warning font-medium">
+                      🎉 Lista de espera aberta! Qualquer pessoa pode marcar agora.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Você pode marcar até 2 nomes. Já marcou: {marksCount}/2
+                    </p>
+                  )}
                   
                   {marksCount < 1 && (
                     <div className="space-y-3 p-4 bg-accent/10 rounded-lg">
