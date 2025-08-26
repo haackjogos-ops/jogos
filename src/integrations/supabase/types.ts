@@ -269,6 +269,10 @@ export type Database = {
           was_advanced: boolean
         }[]
       }
+      clear_volleyball_queue: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       get_active_fila: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -287,6 +291,10 @@ export type Database = {
         Returns: undefined
       }
       mark_offline_users: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      reset_entire_fila: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }

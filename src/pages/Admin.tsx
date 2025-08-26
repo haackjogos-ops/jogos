@@ -165,10 +165,7 @@ const Admin = () => {
 
   const clearQueue = async () => {
     try {
-      const { error } = await supabase
-        .from('volleyball_queue')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+      const { error } = await supabase.rpc('clear_volleyball_queue');
 
       if (error) throw error;
 
@@ -176,13 +173,34 @@ const Admin = () => {
       setTeams(null);
       
       toast({
-        title: "Fila limpa",
+        title: "Fila de vôlei limpa",
         description: "Todos os jogadores foram removidos da fila.",
       });
-    } catch (error) {
+      
+      await loadPlayers();
+    } catch (error: any) {
       toast({
         title: "Erro ao limpar fila",
-        description: "Tente novamente",
+        description: error.message || "Tente novamente",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const resetFila = async () => {
+    try {
+      const { error } = await supabase.rpc('reset_entire_fila');
+
+      if (error) throw error;
+      
+      toast({
+        title: "Ordem da fila resetada",
+        description: "A ordem de turnos foi reiniciada com todos os usuários.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro ao resetar fila",
+        description: error.message || "Tente novamente",
         variant: "destructive",
       });
     }
@@ -250,7 +268,7 @@ const Admin = () => {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Button
           onClick={generateBalancedTeams}
           variant="sport"
@@ -266,7 +284,16 @@ const Admin = () => {
           variant="destructive"
           size="lg"
         >
-          Limpar Fila
+          Limpar Lista de Vôlei
+        </Button>
+
+        <Button
+          onClick={resetFila}
+          variant="outline"
+          size="lg"
+          className="border-warning text-warning hover:bg-warning hover:text-warning-foreground"
+        >
+          Resetar Ordem da Fila
         </Button>
       </div>
 
