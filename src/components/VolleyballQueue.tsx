@@ -92,25 +92,44 @@ const VolleyballQueue = () => {
     initializeAndLoadData();
   }, []);
 
-  // Dynamic timer - recalculate based on iniciou_em every second
+  // Dynamic timer - prefer server remaining_seconds; fallback to iniciou_em; local countdown
   useEffect(() => {
-    const updateTimer = () => {
-      if (activeFila?.iniciou_em) {
-        const startTime = new Date(activeFila.iniciou_em).getTime();
-        const now = new Date().getTime();
-        const elapsedSeconds = Math.floor((now - startTime) / 1000);
-        const remaining = Math.max(0, 60 - elapsedSeconds);
-        setDynamicTimeRemaining(remaining);
+    let intervalId: number | undefined;
+
+    const calcFromStart = () => {
+      if (!activeFila?.iniciou_em) return 0;
+      const startTime = new Date(activeFila.iniciou_em).getTime();
+      const now = Date.now();
+      const elapsedSeconds = Math.floor((now - startTime) / 1000);
+      return Math.max(0, 60 - elapsedSeconds);
+    };
+
+    const setup = () => {
+      // Initialize from server if available
+      if (typeof activeFila?.remaining_seconds === 'number') {
+        setDynamicTimeRemaining(activeFila.remaining_seconds);
+      } else if (activeFila?.iniciou_em) {
+        setDynamicTimeRemaining(calcFromStart());
       } else {
         setDynamicTimeRemaining(0);
       }
+
+      // Start ticking every second
+      intervalId = window.setInterval(() => {
+        if (activeFila?.iniciou_em) {
+          setDynamicTimeRemaining(calcFromStart());
+        } else {
+          setDynamicTimeRemaining(prev => Math.max(0, prev - 1));
+        }
+      }, 1000);
     };
 
-    updateTimer(); // Calculate immediately
-    const timerInterval = setInterval(updateTimer, 1000);
+    setup();
 
-    return () => clearInterval(timerInterval);
-  }, [activeFila?.iniciou_em]);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [activeFila?.iniciou_em, activeFila?.remaining_seconds]);
 
   // Advance fila and refresh every 2 seconds
   useEffect(() => {
